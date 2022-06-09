@@ -220,9 +220,10 @@ class accountConnection(EWrapper, EClient):#Cash balance and positions
         self.start()
 
     def position(self, account: str, contract: Contract, position: float, avgCost: float):
+        global SP_INFO
+        global SP_INDEX
         if (contract.secType == "STK"):
-            global SP_INFO
-            global SP_INDEX
+           
             SP_INFO[SP_INDEX[contract.symbol]][1] = position
             SP_INFO[SP_INDEX[contract.symbol]][2] = avgCost
             
@@ -233,7 +234,7 @@ class accountConnection(EWrapper, EClient):#Cash balance and positions
             if (hours < 16): #Continues if market has not closed yet
                 for i in SP_INFO:
                     if SP_INFO[i][1] == 1/3:
-                        SP_INFO[i][1] == 0
+                        SP_INFO[i][1] = 0
 
                 time.sleep(15)
                 
