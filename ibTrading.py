@@ -320,9 +320,6 @@ def highsLowsThread():
                     
                     max2h30m = data.at[data.index[len(data.index) - 10], 'High']
                     min2h30m = data.at[data.index[len(data.index) - 10], 'Low']
-                    
-                    max1h30m = data.at[data.index[len(data.index) - 6], 'High']
-                    min1h30m = data.at[data.index[len(data.index) - 6], 'Low']
                      
                     max45m = data.at[data.index[len(data.index) - 3], 'High']
                     min45m = data.at[data.index[len(data.index) - 3], 'Low']                     
