@@ -253,7 +253,6 @@ class accountConnection(EWrapper, EClient):#Cash balance and positions
                 SP_INFO[SP_INDEX[contract.symbol]][2] = avgCost
                 
             if (SP_INFO[SP_INDEX[contract.symbol]][1] < 1) and (SP_INFO[SP_INDEX[contract.symbol]][1] > 0): 
-                print("unknowing you", contract.symbol, SP_INFO[SP_INDEX[contract.symbol]][1], position)
         
         elif (contract.secType == "CASH"):
             
@@ -285,7 +284,6 @@ class accountConnection(EWrapper, EClient):#Cash balance and positions
             if (hours < 16): 
                 time.sleep(15)
                 self.reqPositions()
-                #print("helosgbdhd")
             elif hours > 16:
                 self.disconnect()  
 
@@ -354,7 +352,6 @@ def highsLowsThread():
                     SP_INFO[i][14] = vol/20
 
                     SP_INFO[i][15] = data.at[data.index[len(data.index) - 2], 'Volume']
-                    #print("succs  ",  SP_INFO[i], datetime.now())
                     
                 else:
                     print("Failed hrs",  SP_INFO[i], len(data.index), datetime.now())
