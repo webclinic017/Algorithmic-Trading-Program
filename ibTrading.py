@@ -1,3 +1,4 @@
+#Note: Restart the program after you exit a position yourself
 from ibapi.wrapper import *
 from ibapi.contract import *
 from ibapi.client import *
@@ -29,111 +30,127 @@ class tickerConnection(EWrapper, EClient):
         
         SP_CONTRACTS = {}
         
-        for i in SP_INFO:
+        for i in SP_INFO: #Create contracts for all stocks traded this session
             
-            self.reqMarketDataType(3)
-            #Create contracts for all stocks traded this session
             SP_CONTRACTS[i] = Contract()
             SP_CONTRACTS[i].secType = 'STK'
             SP_CONTRACTS[i].currency = 'USD' 
             
-            if SP_INFO[i][0] == "CSCO":
-                SP_CONTRACTS[i].exchange = "ISLAND" 
+            #Mofify this when the list of stocks, or symbols changes
+            if SP_INFO[i][0] == "CSCO" or SP_INFO[i][0] == "META": 
+                SP_CONTRACTS[i].primaryExchange = "ISLAND" 
             elif SP_INFO[i][0] == "CAT":
-                SP_CONTRACTS[i].exchange = "NYSE" 
-            else:
-                SP_CONTRACTS[i].exchange = 'SMART'
-                
+                SP_CONTRACTS[i].primaryExchange = "NYSE"            
+            #else:
+                #SP_CONTRACTS[i].exchange = 'SMART'
+            SP_CONTRACTS[i].exchange = 'SMART'    
             SP_CONTRACTS[i].symbol = SP_INFO[i][0]
             
-            #Request to stream delayed ticker prices, 587(Pl Price Delayed)
-             
-            self.reqMktData(i, SP_CONTRACTS[i], '587', False, False, []) 
             
-            if SP_INFO[i][0] == "CSCO" or SP_INFO[i][0] == "CAT":
-                SP_CONTRACTS[i].exchange = 'SMART'
+            self.reqMktData(i, SP_CONTRACTS[i], "", False, False, []) 
+            self.reqMarketDataType(3)#Delayed ticker prices            
 
             sleep(0.03) #50 requests allowed per second
 
     def tickPrice(self, reqId, tickType, price, attrib):
-        
+        global SP_INFO
+        global SP_CONTRACTS         
         #Checks if market is in open hours
         hours = float(str(datetime.now())[11:13]) + float(str(datetime.now())[14:16])/60
         if(hours > 16):    
             self.disconnect()
-            
-        if tickType == 66:
-            global SP_INFO
-            global SP_CONTRACTS  
-            
-            today = datetime.now()
-            
-            if price != -1:
-                SP_INFO[reqId][3] = price
-                SP_INFO[reqId][4] = str(today) 
+           
+        if tickType == 66 or tickType == 1:
 
-            if (hours >= 9.5 ) and SP_INFO[reqId][1] != 1/3:
+            today = datetime.now()
+
+            SP_INFO[reqId][3] = price
+            SP_INFO[reqId][4] = str(today)
+            
+            if price == -1: 
+                print(SP_INFO[reqId][0], "failed to get price")
+                defined = False
+            elif (SP_INFO[reqId][1] < 1) and (SP_INFO[reqId][1] > 0):
+                defined = False
+            elif(SP_INFO[reqId][8] == -1) or (SP_INFO[reqId][9] == -1):
+                defined = False
+            elif (SP_INFO[reqId][10] == -1) or (SP_INFO[reqId][11] == -1):
+                defined = False
+            elif (SP_INFO[reqId][12] == -1) or (SP_INFO[reqId][13] == -1):
+                defined = False            
+            else:
+                defined = True
+                #print("undefined", SP_INFO[reqId])
+                
+            if (hours >= 9.5 ) and (defined == True):
                 global SP_CONTRACTS
                 global CASH
-                
+                #print("tik", SP_INFO[reqId])
                 if(SP_INFO[reqId][1] == 0): #Entry
                 
-                    if price <= SP_INFO[reqId][7]: #Short Entry
+                    if (price <= SP_INFO[reqId][7]) and (SP_INFO[reqId][9] > SP_INFO[reqId][13] + (SP_INFO[reqId][5]/6) ): #Short Entry
                         print("TRADE: ENTRY, SHORT", SP_INFO[reqId][0])
+                        print(SP_INFO[reqId])
+                        print(CASH)
                         
                         order = Order()
                         order.action = 'SELL'
                         
-                        order.totalQuantity = max(1, (CASH[0]*0.02)//(SP_INFO[reqId][3]) ) #Find new position
+                        order.totalQuantity = max(1, (CASH[1]* 0.02)//(SP_INFO[reqId][3]) ) #Find new position
                         
                         open_positions = 0
                         
                         for i in SP_INFO:
                             if (SP_INFO[i][1] != 0):
-                                open_positions =  open_positions + 1                     
+                                open_positions =  open_positions + 1 
+                        print("Open positions:", open_positions)
                         
-                        if ((price + 0.01) * order.totalQuantity < CASH[1]) and (open_positions < 51):
+                        if ((price + 0.01) * order.totalQuantity < CASH[0]) and (open_positions < 51):
                             order.orderType = 'MKT'                            
                             self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
                             self.nextOrderID += 1
-                            SP_INFO[reqId][1] = 1/3 #Position is undefined untill position checks it                               
+                            SP_INFO[reqId][1] = 63/64 #Position is undefined untill position checks it                               
                             
                         else:
                             print("Not enough funds, not exectuted.")
                         
-                        print("Price", price, "Quantity: ", order.totalQuantity, "Time: ", datetime.now(), "\n")   
-                        sleep(20)
+                        print("Price", price, "Quantity: ", order.totalQuantity, "Time: ", today, "\n")   
                             
-                    elif price >= SP_INFO[reqId][6]: #Long Entry
+                    elif (price >= SP_INFO[reqId][6]) and (SP_INFO[reqId][11] < SP_INFO[reqId][12] - (SP_INFO[reqId][5]/6) ): #Long Entry
                         print("TRADE: ENTRY, LONG", SP_INFO[reqId][0])
+                        print(SP_INFO[reqId])
+                        print(CASH)
                         
                         order = Order()
                         order.action = 'BUY'
                         
-                        order.totalQuantity = max(1, (CASH[0]*0.02)//(SP_INFO[reqId][3]) ) #Find new position
+                        order.totalQuantity = max(1, (CASH[1]*0.02)//(SP_INFO[reqId][3]) ) #Find new position
                         
                         open_positions = 0
                         
                         for i in SP_INFO:
                             if (SP_INFO[i][1] != 0):
-                                open_positions =  open_positions + 1                     
+                                open_positions =  open_positions + 1   
+                        print("Open positions:", open_positions)
                         
-                        if ((price + 0.01) * order.totalQuantity < CASH[1]) and (open_positions < 51):
+                        if ((price + 0.01) * order.totalQuantity < CASH[0]) and (open_positions < 51):
                             order.orderType = 'MKT'                            
                             self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
                             self.nextOrderID += 1
-                            SP_INFO[reqId][1] = 1/3 #Position is undefined untill position checks it                               
+                            SP_INFO[reqId][1] = 63/64 #Position is undefined untill position checks it                               
                             
                         else:
                             print("Not enough funds, not exectuted.")
                         
-                        print("Price", price, "Quantity: ", order.totalQuantity, "Time: ", datetime.now(), "\n")   
-                        sleep(20)                 
+                        print("Price", price, "Quantity: ", order.totalQuantity, "Time: ", today, "\n")   
 
-                elif(SP_INFO[reqId][1] > 0): #Long Exit strategy
-                    if price < SP_INFO[reqId][2] - SP_INFO[reqId][5]: #Stop loss
+                elif(SP_INFO[reqId][1] >= 1): #Long Exit strategy
+                    
+                    if (price < SP_INFO[reqId][2] - SP_INFO[reqId][5]):
                         
                         print("TRADE: UNPROFITABLE EXIT, LONG", SP_INFO[reqId][0])
+                        print(SP_INFO[reqId])
+                        print(CASH)
                         
                         order = Order()
                         order.action = 'SELL'
@@ -142,68 +159,72 @@ class tickerConnection(EWrapper, EClient):
                         
                         self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
                         
-                        print("Price", price, "Bought at", price, SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", datetime.now(), "\n")   
+                        print("Price", price, "Bought at", SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", today, "\n")   
                         
                         self.nextOrderID += 1
-                        SP_INFO[reqId][1] = 1/3 #Position is undefined
-                        sleep(20)
+                        SP_INFO[reqId][1] = 63/64 #Position is undefined
                     
-                    elif price > SP_INFO[reqId][2] and SP_INFO[reqId][8] > SP_INFO[reqId][9]: #Cash out
-                        
-                        print("TRADE: PROFITABLE EXIT, LONG", SP_INFO[reqId][0])
-                        
-                        order = Order()
-                        order.action = 'SELL'
-                        order.totalQuantity = SP_INFO[reqId][1]
-                        order.orderType = 'MKT'
-                        
-                        self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
-                        
-                        print("Price", price, "Bought at", price, SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", datetime.now(), "\n")   
-                        
-                        self.nextOrderID += 1
-                        SP_INFO[reqId][1] = 1/3 #Position is undefined
-                        sleep(20)
-                        
+                    elif price > (SP_INFO[reqId][2] * 1.01): 
+                        if (SP_INFO[reqId][8] > SP_INFO[reqId][9]) or  SP_INFO[reqId][9] > SP_INFO[reqId][13] + (1.75 * SP_INFO[reqId][5]): #Cash out
+                            
+                            print("TRADE: PROFITABLE EXIT, LONG", SP_INFO[reqId][0])
+                            print(SP_INFO[reqId])
+                            print(CASH)
+                            
+                            order = Order()
+                            order.action = 'SELL'
+                            order.totalQuantity = SP_INFO[reqId][1]
+                            order.orderType = 'MKT'
+                            
+                            self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
+                            
+                            print("Price", price, "Bought at", SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", today, "\n")   
+                            
+                            self.nextOrderID += 1
+                            SP_INFO[reqId][1] = 63/64 #Position is undefined
+                            
                 elif(SP_INFO[reqId][1] < 0): #Exit Short strategy
-                    if price > SP_INFO[reqId][2] + SP_INFO[reqId][5]: #Stop loss
+                    if (price > SP_INFO[reqId][2] + SP_INFO[reqId][5]): #Stop loss
                        
                         print("TRADE: UNPROFITABLE EXIT, SHORT", SP_INFO[reqId][0])
+                        print(SP_INFO[reqId])
+                        print(CASH)
                         
                         order = Order()
                         order.action = 'BUY'
-                        order.totalQuantity = SP_INFO[reqId][1]
+                        order.totalQuantity = (-1) * SP_INFO[reqId][1]
                         order.orderType = 'MKT'
                         
                         self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
                         
-                        print("Price", price, "Shorted at", price, SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", datetime.now(), "\n")   
+                        print("Price", price, "Shorted at", price, SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", today, "\n")   
                         
                         self.nextOrderID += 1
-                        SP_INFO[reqId][1] = 1/3 #Position is undefined
-                        sleep(20)
+                        SP_INFO[reqId][1] = 63/64 #Position is undefined
                    
-                    elif price <= SP_INFO[reqId][2] and SP_INFO[reqId][8] > SP_INFO[reqId][9]: #Cash out
-                        print("TRADE: PROFITABLE EXIT, SHORT", SP_INFO[reqId][0])
-                        
-                        order = Order()
-                        order.action = 'BUY'
-                        order.totalQuantity = SP_INFO[reqId][1]
-                        order.orderType = 'MKT'
-                        
-                        self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
-                        
-                        print("Price", price, "Shorted at", price, SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", datetime.now(), "\n")   
-                        
-                        self.nextOrderID += 1
-                        SP_INFO[reqId][1] = 1/3 #Position is undefined
-                        sleep(20)
-  
-    def __init__(self): #ONE
+                    elif price < (SP_INFO[reqId][2] * 0.99):
+                        if (SP_INFO[reqId][10] < SP_INFO[reqId][11]) or (SP_INFO[reqId][11] < SP_INFO[reqId][12] - (1.75 * SP_INFO[reqId][5])): #Cash out
+                            print("TRADE: PROFITABLE EXIT, SHORT", SP_INFO[reqId][0])
+                            print(SP_INFO[reqId])
+                            print(CASH)
+                            
+                            order = Order()
+                            order.action = 'BUY'
+                            order.totalQuantity = (-1) * SP_INFO[reqId][1]
+                            order.orderType = 'MKT'
+                            
+                            self.placeOrder(self.nextOrderID, SP_CONTRACTS[reqId], order)
+                            
+                            print("Price", price, "Shorted at", price, SP_INFO[reqId][2], "Quantity: ", order.totalQuantity, "Time: ", today, "\n")   
+                            
+                            self.nextOrderID += 1
+                            SP_INFO[reqId][1] = 63/64 #Position is undefined
+        
+    def __init__(self):
         EClient.__init__(self, self)
         self.nextOrderID = 0
 
-    def nextValidId(self, orderId): #TWO
+    def nextValidId(self, orderId):
         self.nextOrderID = orderId
         self.start()
 
@@ -220,49 +241,56 @@ class accountConnection(EWrapper, EClient):#Cash balance and positions
         self.start()
 
     def position(self, account: str, contract: Contract, position: float, avgCost: float):
+        seconds = time.time()
+        local_time = time.ctime(seconds)
         global SP_INFO
-        global SP_INDEX
+        global SP_INDEX        
+        
         if (contract.secType == "STK"):
-           
-            SP_INFO[SP_INDEX[contract.symbol]][1] = position
-            SP_INFO[SP_INDEX[contract.symbol]][2] = avgCost
             
-        if (contract.secType == "CASH"): #US cash shows up once per cycle
-            
-            hours = float(str(datetime.now())[11:13]) + float(str(datetime.now())[14:16])/60
-            
-            if (hours < 16): #Continues if market has not closed yet
-                for i in SP_INFO:
-                    if SP_INFO[i][1] == 1/3:
-                        SP_INFO[i][1] = 0
-
-                time.sleep(15)
+            if (SP_INFO[SP_INDEX[contract.symbol]][1] >= 1) or (SP_INFO[SP_INDEX[contract.symbol]][1] <= 8/64):
+                SP_INFO[SP_INDEX[contract.symbol]][1] = position
+                SP_INFO[SP_INDEX[contract.symbol]][2] = avgCost
                 
+            if (SP_INFO[SP_INDEX[contract.symbol]][1] < 1) and (SP_INFO[SP_INDEX[contract.symbol]][1] > 0): 
+                print("unknowing you", contract.symbol, SP_INFO[SP_INDEX[contract.symbol]][1], position)
+        
+        elif (contract.secType == "CASH"):
+            
+            for i in SP_INFO:
+                if (0 < SP_INFO[i][1] < 1):
+                    SP_INFO[i][1] = SP_INFO[i][1] - 1/64
+                    print("position defining", SP_INFO[i][0], SP_INFO[i][1])
+                    
+            #Cash shows up once per cycle
+            #Continues if market is in opening hours
+            
+            hours = float(str(datetime.now())[11:13]) + float(str(datetime.now())[11:13])/60            
+            if (hours < 16): 
+                time.sleep(15)
                 self.reqAccountSummary(21, "All", "$LEDGER:ALL")
-            elif hours >= 16:
+            elif hours > 16:
                 self.disconnect()             
 
     def accountSummary(self, reqId, account, tag, value, currency):#FOUR
         global CASH
-        
-        if (tag == "CashBalance" and currency == "USD"):        
-            CASH[0] = float(value)
-            
-        if (tag == "NetLiquidationByCurrency" and currency == "USD"): 
+        #print(tag, value, currency)
+        if (tag == "NetLiquidationByCurrency" and currency == "USD"):        
             CASH[1] = float(value)
             
+        if (tag == "CashBalance" and currency == "USD"):                    
+            CASH[0] = float(value)
             #Continues if market is in opening hours
-            hours = float(str(datetime.now())[11:13]) + float(str(datetime.now())[14:16])/60
+            hours = float(str(datetime.now())[11:13]) + float(str(datetime.now())[11:13])/60
             if (hours < 16): 
                 time.sleep(15)
                 self.reqPositions()
-            elif hours >= 16:
-                self.reqPositions()
-                self.disconnect()               
+                #print("helosgbdhd")
+            elif hours > 16:
+                self.disconnect()  
 
 def tickerThread(): 
     global tickerSocket
-    sleep(180) #Allow data to download before trading begins
     tickerSocket.run()
     
 def accountThread():
@@ -284,14 +312,20 @@ def highsLowsThread():
                 else:
                     data = yf.download(tickers= SP_INFO[i][0], period="2d", interval="15m")                 
                 if len(data.index) > 19 :
+                    
+                    vol = 0
 
                     max5h = data.at[data.index[len(data.index) - 20], 'High']
                     min5h = data.at[data.index[len(data.index) - 20], 'Low']
                     
-                    vol = 0 
-                    
                     max2h30m = data.at[data.index[len(data.index) - 10], 'High']
-                    min2h30m = data.at[data.index[len(data.index) - 10], 'Low']              
+                    min2h30m = data.at[data.index[len(data.index) - 10], 'Low']
+                    
+                    max1h30m = data.at[data.index[len(data.index) - 6], 'High']
+                    min1h30m = data.at[data.index[len(data.index) - 6], 'Low']
+                     
+                    max45m = data.at[data.index[len(data.index) - 3], 'High']
+                    min45m = data.at[data.index[len(data.index) - 3], 'Low']                     
     
                     #Get 5 hour high and low
                     for x in range(len(data.index) - 20, len(data.index)):
@@ -303,21 +337,30 @@ def highsLowsThread():
                         #Get 2.5 hour high and low
                         if x > len(data.index) - 10:
                             max2h30m = max(max2h30m, data.at[data.index[x], 'High'])
-                            min2h30m = min(min2h30m, data.at[data.index[x], 'Low'])                    
-        
+                            min2h30m = min(min2h30m, data.at[data.index[x], 'Low'])
+
+                            #Get 0.75 hour high and low
+                            if x > len(data.index) - 3:
+                                max45m = max(max2h30m, data.at[data.index[x], 'High'])
+                                min45m = min(min2h30m, data.at[data.index[x], 'Low'])                                    
+
                     SP_INFO[i][8] = max5h
                     SP_INFO[i][9] = max2h30m
                     
                     SP_INFO[i][10] = min5h
-                    SP_INFO[i][11] = min2h30m     
+                    SP_INFO[i][11] = min2h30m  
                     
-                    SP_INFO[i][12] = vol/20
+                    SP_INFO[i][12] = max45m
+                    SP_INFO[i][13] = min45m 
+                    
+                    
+                    SP_INFO[i][14] = vol/20
 
-                    SP_INFO[i][13] = data.at[data.index[len(data.index) - 1], 'Volume']
-                    print("succeeded, ",  SP_INFO[i], datetime.now())
+                    SP_INFO[i][15] = data.at[data.index[len(data.index) - 2], 'Volume']
+                    #print("succs  ",  SP_INFO[i], datetime.now())
                     
                 else:
-                    print("failed, ",  SP_INFO[i][0], datetime.now())
+                    print("Failed hrs",  SP_INFO[i], len(data.index), datetime.now())
                     
                     SP_INFO[i][8] = -1
                     SP_INFO[i][9] = -1
@@ -326,11 +369,9 @@ def highsLowsThread():
                     SP_INFO[i][11] = -1     
                     
                     SP_INFO[i][12] = -1                    
-                    print(data)
-                
-                sleep(5)
-        print(CASH)
-    
+                    #print(data)
+                    
+                sleep(5)    
         hours = float(str(datetime.now())[11:13]) + float(str(datetime.now())[14:16])/60
 
 def main():   
@@ -345,17 +386,16 @@ def main():
     SP_INDEX ={}  
     
     global CASH
-    CASH = [0, 0]
-    # 1) Cash balance 2) Net value
+    CASH = [-1, -1] # 1) Cash balance 2) Net value
     
     i = 0
     
     #Read list of stocks to be traded
     tsx_list = open("s&p100.txt", "r")    
     print("Retrieving 30 day highs and lows...")
-    for x in tsx_list:        
-        symbol = x.strip()
+    for x in tsx_list:  
         
+        symbol = x.strip()        
         i = i + 1      
 
         try:
@@ -366,7 +406,7 @@ def main():
                 data = web.DataReader(symbol, 'yahoo', startDate, endDate)
 
             #Get min, max over last 30 days
-            thirtydaymin = 1000000000
+            thirtydaymin = 100000000
             thirtydaymax = 0
             atr = 0
             
@@ -381,20 +421,32 @@ def main():
                     atr = atr + max(a, b, c)
                     previous = data.at[data.index[j - 1], 'Close']   
                     
-            SP_INFO[i] = [symbol, 1/3, -1, -1, "NULL", atr/10, thirtydaymax, thirtydaymin, -1, -1, -1, -1, -1, -1] 
+            SP_INFO[i] = [symbol, 5/64, -1, -1, "NULL", atr/20, thirtydaymax, thirtydaymin, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1] 
             SP_INDEX[symbol] = i            
-            
+   
             #0) SYMBOL
             #1) POSITION, 2) PRICE BOUGHT AT
             #3) CURRENT PRICE, 4) LAST UPDATED, 
             #5) ATR, 6)thirty day MAX, 7) thirty day MIN  
             #8) 5 hour high, 9) 2.5 hour high,
             #10) 5 hour low, 11) 2.5 hour low,
-            #12) Volume avg, 13) Volume
+            #12) 0.75 hour high, 13) 0.75 hour low,
+            
+            #14) Volume avg, 15) Volume
+            
+            # 1) Numbers between zero and one are undefined positions
+            #Allowing positions to cycle several times before a stock's 
+            #position is defined prevents duplicate trades.
+            
+            #Do not change the fractions to a number that cannot be stored
+            #exactly as a float.
+            #Allowing the position to be undefined for a time gives the application time to complete a trade
+            #before it updates the position. The data stream does not notify when the position is 0.
             
         except Exception as e:
             print(e)
-    
+            print("Could not retrive", symbol)
+    print("Retrieved")
     global tickerSocket
     global accountSocket
     
